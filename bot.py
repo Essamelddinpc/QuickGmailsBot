@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 
 # ========= الإعدادات =========
-BOT_TOKEN = "PUT_YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"
 ADMIN_ID = 2017010463
 SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
@@ -133,4 +133,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
