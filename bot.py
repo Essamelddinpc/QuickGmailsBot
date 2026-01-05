@@ -104,14 +104,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💳 الطريقة: {method}"
     )
 
-    await context.bot.send_photo(
-        chat_id=ADMIN_ID,
-       _toggle=None,
-        photo=update.message.photo[-1].file_id,
-        caption=caption,
-        parse_mode="Markdown"
-    )
-
+await context.bot.send_photo(
+    chat_id=ADMIN_ID,
+    photo=update.message.photo[-1].file_id,
+    caption=caption,
+    parse_mode="Markdown"
+)
     await update.message.reply_text(
         "✅ تم استلام صورة التأكيد\nسيتم المراجعة والتواصل معك"
     )
@@ -134,3 +132,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
