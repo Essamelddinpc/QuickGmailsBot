@@ -6,8 +6,9 @@ from telegram.ext import (
 )
 
 # ====== CONFIG ======
-TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"  # حط التوكن هنا
-ADMIN_ID = 2017010463       # حط ID الأدمن
+
+TOKEN = os.getenv("8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ")  # خليه كـ Environment Variable على Railway
+ADMIN_ID = int(os.getenv("2017010463"))  # كمان Env Variable
 
 VODAFONE_NUMBER = "01030452689"
 BINANCE_ID = "884732274"
@@ -152,4 +153,5 @@ app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 print("Bot is running...")
 app.run_polling()
+
 
