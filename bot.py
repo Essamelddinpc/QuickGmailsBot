@@ -19,7 +19,7 @@ SPAM_COOLDOWN = 2  # seconds
 # ====================
 
 last_action = {}
-waiting_deposit = set()
+
 
 def is_spam(user_id):
     now = time.time()
@@ -41,7 +41,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main_menu(update, context):
     keyboard = [
         [InlineKeyboardButton("💎 شراء جميلات", callback_data="buy")],
-        [InlineKeyboardButton("💰 إيداع", callback_data="deposit")],
         [InlineKeyboardButton("🆘 الدعم", callback_data="support")]
     ]
     markup = InlineKeyboardMarkup(keyboard)
@@ -91,7 +90,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💰 قم بالإيداع ثم أرسل صورة التحويل."
         )
 
-    elif query.data == "deposit":
+   
         keyboard = [
             [InlineKeyboardButton("📱 Vodafone Cash", callback_data="vodafone")],
             [InlineKeyboardButton("💱 Binance", callback_data="binance")]
@@ -101,7 +100,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    elif query.data == "vodafone":
+   
         waiting_deposit.add(user_id)
         await query.message.reply_text(
             f"📱 Vodafone Cash\n"
@@ -109,13 +108,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📸 ابعت صورة التحويل."
         )
 
-    elif query.data == "binance":
-        waiting_deposit.add(user_id)
-        await query.message.reply_text(
-            f"💱 Binance\n"
-            f"Binance ID: {BINANCE_ID}\n\n"
-            "📸 ابعت Screenshot التحويل."
-        )
+
 
     elif query.data == "support":
         await query.message.reply_text(f"🆘 الدعم الفني:\n{SUPPORT_USERNAME}")
@@ -154,6 +147,7 @@ app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 print("Bot is running...")
 app.run_polling()
+
 
 
 
