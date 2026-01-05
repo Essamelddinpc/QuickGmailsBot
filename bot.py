@@ -1,3 +1,4 @@
+import os
 import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -6,9 +7,8 @@ from telegram.ext import (
 )
 
 # ====== CONFIG ======
-import os
-TOKEN = os.getenv("8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ")  # خليه كـ Environment Variable على Railway
-ADMIN_ID = int(os.getenv("2017010463"))  # كمان Env Variable
+TOKEN = os.getenv("TOKEN")      # ضع توكن البوت في Environment Variable
+ADMIN_ID = int(os.getenv("ADMIN_ID"))  # ضع رقمك على تلجرام في Environment Variable
 
 VODAFONE_NUMBER = "01030452689"
 BINANCE_ID = "884732274"
@@ -153,6 +153,7 @@ app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 print("Bot is running...")
 app.run_polling()
+
 
 
 
