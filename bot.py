@@ -15,6 +15,8 @@ SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
 VODAFONE_NUMBER = "01030452689"
 BINANCE_ID = "884732274"
+
+PRICE_PER_GMAIL = 0.30
 # =============================
 
 waiting_quantity = set()
@@ -36,27 +38,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = query.from_user.id
 
     if query.data == "buy":
         waiting_quantity.add(user_id)
-        await query.message.edit_text("💎 اكتب كمية الجيميلات:")
+        await query.message.edit_text("💎 اكتب كمية الجيميلات اللي عايزها:")
 
     elif query.data in ["vodafone", "binance"]:
         waiting_receipt[user_id] = query.data
 
+        quantity = context.user_data.get("quantity", 0)
+        total_price = context.user_data.get("total_price", 0)
+
         if query.data == "vodafone":
             text = (
                 "📱 *Vodafone Cash*\n\n"
+                f"💎 الكمية: *{quantity}*\n"
+                f"💵 السعر: *${total_price}*\n\n"
                 f"📞 الرقم: `{VODAFONE_NUMBER}`\n\n"
-                "📸 ابعت صورة تأكيد الدفع"
+                "⚠️ يرجى دفع المبلغ المذكور\n"
+                "📸 ثم ابعت صورة تأكيد الدفع"
             )
         else:
             text = (
                 "💰 *Binance*\n\n"
+                f"💎 الكمية: *{quantity}*\n"
+                f"💵 السعر: *${total_price}*\n\n"
                 f"🆔 Binance ID: `{BINANCE_ID}`\n\n"
-                "📸 ابعت صورة تأكيد الدفع"
+                "⚠️ يرجى دفع المبلغ المذكور\n"
+                "📸 ثم ابعت صورة تأكيد الدفع"
             )
 
         await query.message.edit_text(text, parse_mode="Markdown")
@@ -66,8 +76,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
     if user_id in waiting_quantity:
-        quantity = update.message.text
+        try:
+            quantity = int(update.message.text)
+            if quantity <= 0:
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text("❌ من فضلك اكتب رقم صحيح")
+            return
+
+        total_price = round(quantity * PRICE_PER_GMAIL, 2)
+
         context.user_data["quantity"] = quantity
+        context.user_data["total_price"] = total_price
         waiting_quantity.remove(user_id)
 
         keyboard = [
@@ -76,7 +96,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
         await update.message.reply_text(
-            f"✅ الكمية: *{quantity}*\n\nاختر طريقة الدفع:",
+            f"✅ *تفاصيل الطلب*\n\n"
+            f"💎 الكمية: *{quantity}*\n"
+            f"💵 السعر الإجمالي: *${total_price}*\n\n"
+            "اختر طريقة الدفع:",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -94,6 +117,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     method = waiting_receipt[user_id]
     quantity = context.user_data.get("quantity", "غير محدد")
+    total_price = context.user_data.get("total_price", "غير محدد")
     username = update.message.from_user.username or "بدون يوزر"
 
     caption = (
@@ -101,6 +125,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 المستخدم: @{username}\n"
         f"🆔 ID: {user_id}\n"
         f"💎 الكمية: {quantity}\n"
+        f"💵 السعر: ${total_price}\n"
         f"💳 الطريقة: {method}"
     )
 
@@ -133,5 +158,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
