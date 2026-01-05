@@ -146,11 +146,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⏱ سيتم التنفيذ قريبًا، شكرًا لثقتك."
     )
 
-await context.bot.send_photo(
-    chat_id=ADMIN_ID,
-    photo=update.message.photo[-1].file_id,
-    caption=caption
-)
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
@@ -159,6 +154,7 @@ app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 print("Bot is running...")
 app.run_polling()
+
 
 
 
