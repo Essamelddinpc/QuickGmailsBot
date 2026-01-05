@@ -8,24 +8,25 @@ from telegram.ext import (
     filters
 )
 
-# ================== الإعدادات ==================
-BOT_TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"
+# ========= الإعدادات =========
+BOT_TOKEN = "PUT_YOUR_BOT_TOKEN_HERE"
 ADMIN_ID = 2017010463
 SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
 VODAFONE_NUMBER = "01030452689"
 BINANCE_ID = "884732274"
+# =============================
 
 waiting_quantity = set()
 waiting_receipt = {}
-# ==============================================
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("🛒 شراء جميلات", callback_data="buy_gems")],
+        [InlineKeyboardButton("🛒 شراء جميلات", callback_data="buy")],
         [InlineKeyboardButton("🆘 الدعم", url=f"https://t.me/{SUPPORT_USERNAME.replace('@','')}")]
     ]
+
     await update.message.reply_text(
         "👋 أهلاً بيك\nاختار من القائمة:",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -35,13 +36,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user_id = query.from_user.id
 
-    if query.data == "buy_gems":
+    if query.data == "buy":
         waiting_quantity.add(user_id)
-        await query.message.edit_text(
-            "💎 اكتب كمية الجيمات اللي عايز تشتريها:"
-        )
+        await query.message.edit_text("💎 اكتب كمية الجيميلات:")
 
     elif query.data in ["vodafone", "binance"]:
         waiting_receipt[user_id] = query.data
@@ -104,12 +104,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💳 الطريقة: {method}"
     )
 
-await context.bot.send_photo(
-    chat_id=ADMIN_ID,
-    photo=update.message.photo[-1].file_id,
-    caption=caption,
-    parse_mode="Markdown"
-)
+    await context.bot.send_photo(
+        chat_id=ADMIN_ID,
+        photo=update.message.photo[-1].file_id,
+        caption=caption,
+        parse_mode="Markdown"
+    )
+
     await update.message.reply_text(
         "✅ تم استلام صورة التأكيد\nسيتم المراجعة والتواصل معك"
     )
