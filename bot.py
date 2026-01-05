@@ -6,7 +6,7 @@ from telegram.ext import (
 )
 
 # ====== CONFIG ======
-
+import os
 TOKEN = os.getenv("8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ")  # خليه كـ Environment Variable على Railway
 ADMIN_ID = int(os.getenv("2017010463"))  # كمان Env Variable
 
@@ -153,5 +153,6 @@ app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 print("Bot is running...")
 app.run_polling()
+
 
 
