@@ -1,9 +1,4 @@
-import os
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -15,90 +10,114 @@ from telegram.ext import (
 
 # ================== الإعدادات ==================
 BOT_TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"
-ADMIN_ID = 2017010463  # ← حط ID الأدمن بتاعك هنا
-waiting_receipt = set()
-# ===============================================
+ADMIN_ID = 2017010463
+SUPPORT_USERNAME = "@Quick_Gmails_Support"
+
+VODAFONE_NUMBER = "01030452689"
+BINANCE_ID = "884732274"
+
+waiting_quantity = set()
+waiting_receipt = {}
+# ==============================================
 
 
-# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("💳 إيداع", callback_data="deposit")]
+        [InlineKeyboardButton("🛒 شراء جميلات", callback_data="buy_gems")],
+        [InlineKeyboardButton("🆘 الدعم", url=f"https://t.me/{SUPPORT_USERNAME.replace('@','')}")]
     ]
     await update.message.reply_text(
-        "👋 أهلاً بك\nاختر من القائمة:",
+        "👋 أهلاً بيك\nاختار من القائمة:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-# الأزرار
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
 
-    # زر الإيداع
-    if query.data == "deposit":
+    if query.data == "buy_gems":
+        waiting_quantity.add(user_id)
+        await query.message.edit_text(
+            "💎 اكتب كمية الجيمات اللي عايز تشتريها:"
+        )
+
+    elif query.data in ["vodafone", "binance"]:
+        waiting_receipt[user_id] = query.data
+
+        if query.data == "vodafone":
+            text = (
+                "📱 *Vodafone Cash*\n\n"
+                f"📞 الرقم: `{VODAFONE_NUMBER}`\n\n"
+                "📸 ابعت صورة تأكيد الدفع"
+            )
+        else:
+            text = (
+                "💰 *Binance*\n\n"
+                f"🆔 Binance ID: `{BINANCE_ID}`\n\n"
+                "📸 ابعت صورة تأكيد الدفع"
+            )
+
+        await query.message.edit_text(text, parse_mode="Markdown")
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id in waiting_quantity:
+        quantity = update.message.text
+        context.user_data["quantity"] = quantity
+        waiting_quantity.remove(user_id)
+
         keyboard = [
             [InlineKeyboardButton("📱 Vodafone Cash", callback_data="vodafone")],
             [InlineKeyboardButton("💰 Binance", callback_data="binance")]
         ]
-        await query.message.edit_text(
-            "👇 اختر طريقة الإيداع:",
+
+        await update.message.reply_text(
+            f"✅ الكمية: *{quantity}*\n\nاختر طريقة الدفع:",
+            parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        return
 
-    # اختيار طريقة الدفع
-    elif query.data in ["vodafone", "binance"]:
-        waiting_receipt.add(user_id)
-
-        method = "Vodafone Cash" if query.data == "vodafone" else "Binance"
-
-        await query.message.edit_text(
-            f"✅ تم اختيار *{method}*\n\n"
-            "📸 من فضلك ابعت *صورة تأكيد التحويل*",
-            parse_mode="Markdown"
-        )
+    await update.message.reply_text("❌ استخدم الأزرار فقط")
 
 
-# استقبال الصور
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
     if user_id not in waiting_receipt:
-        await update.message.reply_text(
-            "⏳ برجاء الانتظار قبل المحاولة مرة أخرى"
-        )
+        await update.message.reply_text("⏳ برجاء اتباع الخطوات بالترتيب")
         return
 
-    photo = update.message.photo[-1]
+    method = waiting_receipt[user_id]
+    quantity = context.user_data.get("quantity", "غير محدد")
     username = update.message.from_user.username or "بدون يوزر"
 
     caption = (
-        "📥 *طلب إيداع جديد*\n\n"
+        "📥 *طلب شراء جديد*\n\n"
         f"👤 المستخدم: @{username}\n"
-        f"🆔 ID: {user_id}"
+        f"🆔 ID: {user_id}\n"
+        f"💎 الكمية: {quantity}\n"
+        f"💳 الطريقة: {method}"
     )
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
-        photo=photo.file_id,
+       _toggle=None,
+        photo=update.message.photo[-1].file_id,
         caption=caption,
         parse_mode="Markdown"
     )
 
     await update.message.reply_text(
-        "✅ تم استلام صورة التأكيد\nسيتم المراجعة في أقرب وقت"
+        "✅ تم استلام صورة التأكيد\nسيتم المراجعة والتواصل معك"
     )
 
-    waiting_receipt.remove(user_id)
-
-
-# أي رسالة نصية
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "❌ الرجاء استخدام الأزرار فقط"
-    )
+    waiting_receipt.pop(user_id)
+    context.user_data.clear()
 
 
 def main():
