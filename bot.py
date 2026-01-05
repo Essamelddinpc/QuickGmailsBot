@@ -15,7 +15,7 @@ BINANCE_ID = "884732274"
 SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
 PRICE_PER_GEM = 0.30
-SPAM_COOLDOWN = 5  # seconds
+SPAM_COOLDOWN = 2  # seconds
 # ====================
 
 last_action = {}
@@ -153,6 +153,7 @@ app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 print("Bot is running...")
 app.run_polling()
+
 
 
 
