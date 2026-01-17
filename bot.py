@@ -8,7 +8,7 @@ import json
 import os
 
 # ========= إعدادات =========
-BOT_TOKEN = "PUT_NEW_BOT_TOKEN_HERE"
+BOT_TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"
 ADMIN_ID = 2017010463
 
 VODAFONE = "01030452689"
@@ -190,3 +190,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
