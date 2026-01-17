@@ -1,159 +1,160 @@
-import os
-import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    MessageHandler, ContextTypes, filters
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
 )
 
-# ====== CONFIG ======
-TOKEN = os.getenv("TOKEN")      # ضع توكن البوت في Environment Variable
-ADMIN_ID = int(os.getenv("ADMIN_ID"))  # ضع رقمك على تلجرام في Environment Variable
+# ========= الإعدادات =========
+BOT_TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"
+ADMIN_ID = 2017010463
+SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
 VODAFONE_NUMBER = "01030452689"
 BINANCE_ID = "884732274"
-SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
-PRICE_PER_GEM = 0.30
-SPAM_COOLDOWN = 2  # seconds
-# ====================
+PRICE_PER_GMAIL = 0.30
+# =============================
 
-last_action = {}
+waiting_quantity = set()
+waiting_receipt = {}
 
-
-def is_spam(user_id):
-    now = time.time()
-    if user_id in last_action and now - last_action[user_id] < SPAM_COOLDOWN:
-        return True
-    last_action[user_id] = now
-    return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not user.username:
-        await update.message.reply_text(
-            "❌ لازم يكون عندك Username على تلجرام.\n"
-            "حطه من الإعدادات وبعدين ابعت /start"
-        )
-        return
-    await main_menu(update, context)
-
-async def main_menu(update, context):
     keyboard = [
-        [InlineKeyboardButton("💎 شراء جميلات", callback_data="buy")],
-        [InlineKeyboardButton("🆘 الدعم", callback_data="support")]
+        [InlineKeyboardButton("🛒 شراء جميلات", callback_data="buy")],
+        [InlineKeyboardButton("🆘 الدعم", url=f"https://t.me/{SUPPORT_USERNAME.replace('@','')}")]
     ]
-    markup = InlineKeyboardMarkup(keyboard)
 
-    if update.message:
-        await update.message.reply_text("اختر من القائمة 👇", reply_markup=markup)
-    else:
-        await update.callback_query.message.edit_text("اختر من القائمة 👇", reply_markup=markup)
+    await update.message.reply_text(
+        "👋 أهلاً بيك\nاختار من القائمة:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
     await query.answer()
-
-    if is_spam(user_id):
-        await query.message.reply_text("⏳ برجاء الانتظار قبل المحاولة مرة أخرى.")
-        return
+    user_id = query.from_user.id
 
     if query.data == "buy":
-        keyboard = [
-            [InlineKeyboardButton("100 جميلة", callback_data="gems_100")],
-            [InlineKeyboardButton("250 جميلة", callback_data="gems_250")],
-            [InlineKeyboardButton("500 جميلة", callback_data="gems_500")]
-        ]
-        await query.message.reply_text(
-            "اختر الباقة 💎",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        waiting_quantity.add(user_id)
+        await query.message.edit_text("💎 اكتب كمية الجيميلات اللي عايزها:")
 
-    elif query.data.startswith("gems_"):
-        amount = int(query.data.split("_")[1])
-        price = amount * PRICE_PER_GEM
+    elif query.data in ["vodafone", "binance"]:
+        waiting_receipt[user_id] = query.data
 
-        admin_msg = (
-            f"🛒 طلب شراء جميلات\n\n"
-            f"👤 @{query.from_user.username}\n"
-            f"🆔 ID: {user_id}\n"
-            f"💎 الكمية: {amount}\n"
-            f"💵 السعر: {price}$"
-        )
-        await context.bot.send_message(chat_id=ADMIN_ID, text=admin_msg)
+        quantity = context.user_data.get("quantity", 0)
+        total_price = context.user_data.get("total_price", 0)
 
-        await query.message.reply_text(
-            f"✅ تم تسجيل طلبك\n\n"
-            f"💎 الكمية: {amount}\n"
-            f"💵 السعر: {price}$\n\n"
-            "💰 قم بالإيداع ثم أرسل صورة التحويل."
-        )
+        if query.data == "vodafone":
+            text = (
+                "📱 *Vodafone Cash*\n\n"
+                f"💎 الكمية: *{quantity}*\n"
+                f"💵 السعر: *${total_price}*\n\n"
+                f"📞 الرقم: `{VODAFONE_NUMBER}`\n\n"
+                "⚠️ يرجى دفع المبلغ المذكور\n"
+                "📸 ثم ابعت صورة تأكيد الدفع"
+            )
+        else:
+            text = (
+                "💰 *Binance*\n\n"
+                f"💎 الكمية: *{quantity}*\n"
+                f"💵 السعر: *${total_price}*\n\n"
+                f"🆔 Binance ID: `{BINANCE_ID}`\n\n"
+                "⚠️ يرجى دفع المبلغ المذكور\n"
+                "📸 ثم ابعت صورة تأكيد الدفع"
+            )
 
-   
+        await query.message.edit_text(text, parse_mode="Markdown")
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id in waiting_quantity:
+        try:
+            quantity = int(update.message.text)
+            if quantity <= 0:
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text("❌ من فضلك اكتب رقم صحيح")
+            return
+
+        total_price = round(quantity * PRICE_PER_GMAIL, 2)
+
+        context.user_data["quantity"] = quantity
+        context.user_data["total_price"] = total_price
+        waiting_quantity.remove(user_id)
+
         keyboard = [
             [InlineKeyboardButton("📱 Vodafone Cash", callback_data="vodafone")],
-            [InlineKeyboardButton("💱 Binance", callback_data="binance")]
+            [InlineKeyboardButton("💰 Binance", callback_data="binance")]
         ]
-        await query.message.reply_text(
-            "اختر طريقة الإيداع 👇",
+
+        await update.message.reply_text(
+            f"✅ *تفاصيل الطلب*\n\n"
+            f"💎 الكمية: *{quantity}*\n"
+            f"💵 السعر الإجمالي: *${total_price}*\n\n"
+            "اختر طريقة الدفع:",
+            parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-
-   
-        waiting_deposit.add(user_id)
-        await query.message.reply_text(
-            f"📱 Vodafone Cash\n"
-            f"رقم التحويل: {VODAFONE_NUMBER}\n\n"
-            "📸 ابعت صورة التحويل."
-        )
-
-
-
-    elif query.data == "support":
-        await query.message.reply_text(f"🆘 الدعم الفني:\n{SUPPORT_USERNAME}")
-
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if user_id not in waiting_deposit:
-        await update.message.reply_text("❌ لا يوجد طلب إيداع مفتوح.")
         return
 
-    waiting_deposit.remove(user_id)
+    await update.message.reply_text("❌ استخدم الأزرار فقط")
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id not in waiting_receipt:
+        await update.message.reply_text("⏳ برجاء اتباع الخطوات بالترتيب")
+        return
+
+    method = waiting_receipt[user_id]
+    quantity = context.user_data.get("quantity", "غير محدد")
+    total_price = context.user_data.get("total_price", "غير محدد")
+    username = update.message.from_user.username or "بدون يوزر"
 
     caption = (
-        f"💰 إثبات إيداع\n\n"
-        f"👤 @{update.effective_user.username}\n"
-        f"🆔 ID: {user_id}"
+        "📥 *طلب شراء جديد*\n\n"
+        f"👤 المستخدم: @{username}\n"
+        f"🆔 ID: {user_id}\n"
+        f"💎 الكمية: {quantity}\n"
+        f"💵 السعر: ${total_price}\n"
+        f"💳 الطريقة: {method}"
     )
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
         photo=update.message.photo[-1].file_id,
-        caption=caption
+        caption=caption,
+        parse_mode="Markdown"
     )
 
     await update.message.reply_text(
-        "✅ تم استلام إثبات الإيداع.\n"
-        "⏱ سيتم التنفيذ قريبًا، شكرًا لثقتك."
+        "✅ تم استلام صورة التأكيد\nسيتم المراجعة والتواصل معك"
     )
 
-
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(buttons))
-app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-
-print("Bot is running...")
-app.run_polling()
+    waiting_receipt.pop(user_id)
+    context.user_data.clear()
 
 
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(buttons))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    print("🤖 Bot is running...")
+    app.run_polling()
 
 
-
-
-
-
-
-
+if __name__ == "__main__":
+    main()
