@@ -1,207 +1,194 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler,
-    CallbackQueryHandler, MessageHandler,
-    ContextTypes, filters
-)
-import json
 import os
+import json
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
-# ========= إعدادات =========
-BOT_TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"
-ADMIN_ID = 2017010463
-
-VODAFONE = "01030452689"
-BINANCE = "884732274"
-
-PRICE = 0.30
+# ================== CONFIG ==================
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = 123456789  # حط ايدي الادمن هنا
 USERS_FILE = "users.json"
-GMAIL_FILE = "gmails.txt"
-# ===========================
 
-# ---------- ملفات ----------
-if not os.path.exists(USERS_FILE):
-    with open(USERS_FILE, "w") as f:
-        json.dump({}, f)
-
-if not os.path.exists(GMAIL_FILE):
-    open(GMAIL_FILE, "w").close()
-
+# ================== HELPERS ==================
 def load_users():
-    with open(USERS_FILE) as f:
+    if not os.path.exists(USERS_FILE):
+        return {}
+    with open(USERS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_users(data):
-    with open(USERS_FILE, "w") as f:
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-def load_gmails():
-    with open(GMAIL_FILE) as f:
-        return [x.strip() for x in f if x.strip()]
-
-def save_gmails(data):
-    with open(GMAIL_FILE, "w") as f:
-        f.write("\n".join(data))
-
-# ---------- Start ----------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = str(update.message.from_user.id)
+def get_user(uid):
     users = load_users()
-
-    if uid not in users:
-        users[uid] = {"balance": 0}
+    if str(uid) not in users:
+        users[str(uid)] = {
+            "balance": 0,
+            "state": None,
+            "amount": 0,
+            "method": None
+        }
         save_users(users)
+    return users
 
+# ================== START ==================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [
-        [InlineKeyboardButton("💼 رصيدي", callback_data="balance")],
-        [InlineKeyboardButton("➕ إيداع", callback_data="deposit")],
-        [InlineKeyboardButton("🛒 شراء جميلات", callback_data="buy")]
+        [InlineKeyboardButton("💰 إيداع", callback_data="deposit")],
+        [InlineKeyboardButton("💳 رصيدي", callback_data="balance")]
     ]
-
     await update.message.reply_text(
-        "👋 أهلاً بيك\nاختار من القائمة:",
+        "أهلاً بك 👋",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-# ---------- أزرار ----------
+# ================== BUTTONS ==================
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     uid = str(q.from_user.id)
-    users = load_users()
+    users = get_user(uid)
 
-    if q.data == "balance":
-        await q.message.edit_text(f"💼 رصيدك الحالي: {users[uid]['balance']}$")
-
-    elif q.data == "deposit":
+    if q.data == "deposit":
         kb = [
-            [InlineKeyboardButton("📱 Vodafone Cash", callback_data="dep_voda")],
-            [InlineKeyboardButton("💰 Binance", callback_data="dep_binance")]
+            [InlineKeyboardButton("📱 Vodafone Cash", callback_data="pay_vodafone")],
+            [InlineKeyboardButton("🪙 Binance", callback_data="pay_binance")]
         ]
-        await q.message.edit_text("اختر طريقة الإيداع:", reply_markup=InlineKeyboardMarkup(kb))
+        await q.message.reply_text(
+            "اختر طريقة الدفع:",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
 
-    elif q.data.startswith("dep_"):
-        context.user_data["deposit_method"] = q.data
-        context.user_data["waiting_amount"] = True
+    elif q.data.startswith("pay_"):
+        method = q.data.split("_")[1]
+        users[uid]["method"] = method
+        users[uid]["state"] = "WAIT_AMOUNT"
+        save_users(users)
 
-        await q.message.edit_text("✍️ اكتب مبلغ الإيداع بالدولار:")
+        await q.message.reply_text("اكتب مبلغ الإيداع:")
 
-    elif q.data == "buy":
-        context.user_data["buying"] = True
-        await q.message.edit_text("✍️ اكتب كمية الجيميلات:")
+    elif q.data == "balance":
+        await q.message.reply_text(
+            f"💳 رصيدك الحالي: {users[uid]['balance']}$"
+        )
 
-    elif q.data.startswith("approve_") or q.data.startswith("reject_"):
+    elif q.data.startswith("deposit_approve_") or q.data.startswith("deposit_reject_"):
         if q.from_user.id != ADMIN_ID:
-            await q.answer("❌ غير مسموح", show_alert=True)
             return
 
-        _, action, uid, amount = q.data.split("_")
+        data = q.data.split("_")
+        action = data[1]
+        user_id = data[2]
+        amount = float(data[3])
+
         users = load_users()
 
         if action == "approve":
-            users[uid]["balance"] += float(amount)
+            users[user_id]["balance"] += amount
             save_users(users)
 
-            await q.message.edit_text("✅ تم قبول الإيداع")
-            await context.bot.send_message(int(uid), f"✅ تم إضافة {amount}$ إلى رصيدك")
-        else:
-            await q.message.edit_text("❌ تم رفض الإيداع")
-            await context.bot.send_message(int(uid), "❌ تم رفض الإيداع")
+            await q.message.edit_caption("✅ تم قبول الإيداع")
+            await context.bot.send_message(
+                chat_id=int(user_id),
+                text=f"✅ تم قبول الإيداع\n💰 المبلغ: {amount}$"
+            )
 
-# ---------- نص ----------
+        else:
+            await q.message.edit_caption("❌ تم رفض الإيداع")
+            await context.bot.send_message(
+                chat_id=int(user_id),
+                text="❌ تم رفض الإيداع"
+            )
+
+# ================== TEXT ==================
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.message.from_user.id)
+    users = get_user(uid)
 
-    if context.user_data.get("waiting_amount"):
+    if users[uid]["state"] == "WAIT_AMOUNT":
         try:
             amount = float(update.message.text)
-            if amount <= 0:
-                raise ValueError
         except:
-            await update.message.reply_text("❌ اكتب مبلغ صحيح")
+            await update.message.reply_text("❌ اكتب رقم صحيح")
             return
 
-        context.user_data["deposit_amount"] = amount
-        context.user_data["waiting_amount"] = False
-        context.user_data["waiting_receipt"] = True
-
-        method = context.user_data["deposit_method"]
-        number = VODAFONE if method == "dep_voda" else BINANCE
-
-        await update.message.reply_text(
-            f"💳 بيانات الدفع\n\n{number}\n\n📸 ابعت صورة تأكيد الدفع"
-        )
-
-        return
-
-    if context.user_data.get("buying"):
-        users = load_users()
-        try:
-            qty = int(update.message.text)
-            if qty <= 0:
-                raise ValueError
-        except:
-            await update.message.reply_text("❌ رقم غير صحيح")
-            return
-
-        total = round(qty * PRICE, 2)
-        gmails = load_gmails()
-
-        if users[uid]["balance"] < total:
-            await update.message.reply_text("❌ رصيدك غير كافي")
-            context.user_data.clear()
-            return
-
-        if len(gmails) < qty:
-            await update.message.reply_text("❌ الكمية غير متوفرة")
-            context.user_data.clear()
-            return
-
-        users[uid]["balance"] -= total
+        users[uid]["amount"] = amount
+        users[uid]["state"] = "WAIT_IMAGE"
         save_users(users)
 
-        send = gmails[:qty]
-        save_gmails(gmails[qty:])
+        if users[uid]["method"] == "vodafone":
+            await update.message.reply_text(
+                f"💰 المبلغ: {amount}$\n"
+                f"📱 رقم فودافون: 01030452689\n"
+                f"📸 ابعت صورة تأكيد الدفع"
+            )
+        else:
+            await update.message.reply_text(
+                f"💰 المبلغ: {amount}$\n"
+                f"🪙 Binance ID: 884732274\n"
+                f"📸 ابعت صورة تأكيد الدفع"
+            )
 
-        await update.message.reply_text(
-            "✅ تم الشراء بنجاح\n\n" + "\n".join(send)
-        )
-
-        context.user_data.clear()
-
-# ---------- صورة ----------
+# ================== PHOTO ==================
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("waiting_receipt"):
+    uid = str(update.message.from_user.id)
+    users = get_user(uid)
+
+    if users[uid]["state"] != "WAIT_IMAGE":
         return
 
-    uid = str(update.message.from_user.id)
-    amount = context.user_data["deposit_amount"]
+    amount = users[uid]["amount"]
+    photo = update.message.photo[-1].file_id
 
-    kb = [[
-        InlineKeyboardButton("✅ قبول", callback_data=f"deposit_approve_{uid}_{amount}"),
-        InlineKeyboardButton("❌ رفض", callback_data=f"deposit_reject_{uid}_{amount}")
-    ]]
+    kb = [
+        [
+            InlineKeyboardButton(
+                "✅ قبول",
+                callback_data=f"deposit_approve_{uid}_{amount}"
+            ),
+            InlineKeyboardButton(
+                "❌ رفض",
+                callback_data=f"deposit_reject_{uid}_{amount}"
+            )
+        ]
+    ]
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
-        photo=update.message.photo[-1].file_id,
-        caption=f"📥 طلب إيداع\n🆔 المستخدم: {uid}\n💵 المبلغ: {amount}$",
+        photo=photo,
+        caption=(
+            f"📥 طلب إيداع جديد\n"
+            f"👤 ID: {uid}\n"
+            f"💰 المبلغ: {amount}$"
+        ),
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-    await update.message.reply_text("⏳ تم إرسال الإيصال للمراجعة")
-    context.user_data.clear()
+    users[uid]["state"] = None
+    save_users(users)
 
-# ---------- تشغيل ----------
+    await update.message.reply_text("⏳ تم إرسال الطلب للإدارة")
+
+# ================== MAIN ==================
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(buttons))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-    print("Bot running...")
     app.run_polling()
 
 if __name__ == "__main__":
