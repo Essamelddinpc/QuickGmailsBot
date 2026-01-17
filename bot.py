@@ -15,7 +15,7 @@ from telegram.ext import (
 )
 
 # ================== CONFIG ==================
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ")
 ADMIN_ID = 2017010463  # حط ايدي الادمن هنا
 USERS_FILE = "users.json"
 
@@ -193,4 +193,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
