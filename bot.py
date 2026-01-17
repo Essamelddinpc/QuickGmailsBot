@@ -1,198 +1,159 @@
 import os
-import json
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+import time
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes, filters
 )
 
-# ================== CONFIG ==================
-TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-USERS_FILE = "users.json"
+# ====== CONFIG ======
+TOKEN = os.getenv("TOKEN")      # ضع توكن البوت في Environment Variable
+ADMIN_ID = int(os.getenv("ADMIN_ID"))  # ضع رقمك على تلجرام في Environment Variable
 
-# ================== HELPERS ==================
-def load_users():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    with open(USERS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+VODAFONE_NUMBER = "01030452689"
+BINANCE_ID = "884732274"
+SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
-def save_users(data):
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+PRICE_PER_GEM = 0.30
+SPAM_COOLDOWN = 2  # seconds
+# ====================
 
-def get_user(uid):
-    users = load_users()
-    if str(uid) not in users:
-        users[str(uid)] = {
-            "balance": 0,
-            "state": None,
-            "amount": 0,
-            "method": None
-        }
-        save_users(users)
-    return users
+last_action = {}
 
-# ================== START ==================
+
+def is_spam(user_id):
+    now = time.time()
+    if user_id in last_action and now - last_action[user_id] < SPAM_COOLDOWN:
+        return True
+    last_action[user_id] = now
+    return False
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [
-        [InlineKeyboardButton("💰 إيداع", callback_data="deposit")],
-        [InlineKeyboardButton("💳 رصيدي", callback_data="balance")]
+    user = update.effective_user
+    if not user.username:
+        await update.message.reply_text(
+            "❌ لازم يكون عندك Username على تلجرام.\n"
+            "حطه من الإعدادات وبعدين ابعت /start"
+        )
+        return
+    await main_menu(update, context)
+
+async def main_menu(update, context):
+    keyboard = [
+        [InlineKeyboardButton("💎 شراء جميلات", callback_data="buy")],
+        [InlineKeyboardButton("🆘 الدعم", callback_data="support")]
     ]
-    await update.message.reply_text(
-        "أهلاً بك 👋",
-        reply_markup=InlineKeyboardMarkup(kb)
-    )
+    markup = InlineKeyboardMarkup(keyboard)
 
-# ================== BUTTONS ==================
+    if update.message:
+        await update.message.reply_text("اختر من القائمة 👇", reply_markup=markup)
+    else:
+        await update.callback_query.message.edit_text("اختر من القائمة 👇", reply_markup=markup)
+
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    uid = str(q.from_user.id)
-    users = get_user(uid)
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
 
-    if q.data == "deposit":
-        kb = [
-            [InlineKeyboardButton("📱 Vodafone Cash", callback_data="pay_vodafone")],
-            [InlineKeyboardButton("🪙 Binance", callback_data="pay_binance")]
-        ]
-        await q.message.reply_text(
-            "اختر طريقة الدفع:",
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
-
-    elif q.data.startswith("pay_"):
-        method = q.data.split("_")[1]
-        users[uid]["method"] = method
-        users[uid]["state"] = "WAIT_AMOUNT"
-        save_users(users)
-
-        await q.message.reply_text("اكتب مبلغ الإيداع:")
-
-    elif q.data == "balance":
-        await q.message.reply_text(
-            f"💳 رصيدك الحالي: {users[uid]['balance']}$"
-        )
-
-    elif q.data.startswith("deposit_approve_") or q.data.startswith("deposit_reject_"):
-        if q.from_user.id != ADMIN_ID:
-            return
-
-        data = q.data.split("_")
-        action = data[1]
-        user_id = data[2]
-        amount = float(data[3])
-
-        users = load_users()
-
-        if action == "approve":
-            users[user_id]["balance"] += amount
-            save_users(users)
-
-            await q.message.edit_caption("✅ تم قبول الإيداع")
-            await context.bot.send_message(
-                chat_id=int(user_id),
-                text=f"✅ تم قبول الإيداع\n💰 المبلغ: {amount}$"
-            )
-
-        else:
-            await q.message.edit_caption("❌ تم رفض الإيداع")
-            await context.bot.send_message(
-                chat_id=int(user_id),
-                text="❌ تم رفض الإيداع"
-            )
-
-# ================== TEXT ==================
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = str(update.message.from_user.id)
-    users = get_user(uid)
-
-    if users[uid]["state"] == "WAIT_AMOUNT":
-        try:
-            amount = float(update.message.text)
-        except:
-            await update.message.reply_text("❌ اكتب رقم صحيح")
-            return
-
-        users[uid]["amount"] = amount
-        users[uid]["state"] = "WAIT_IMAGE"
-        save_users(users)
-
-        if users[uid]["method"] == "vodafone":
-            await update.message.reply_text(
-                f"💰 المبلغ: {amount}$\n"
-                f"📱 رقم فودافون: 01030452689\n"
-                f"📸 ابعت صورة تأكيد الدفع"
-            )
-        else:
-            await update.message.reply_text(
-                f"💰 المبلغ: {amount}$\n"
-                f"🪙 Binance ID: 884732274\n"
-                f"📸 ابعت صورة تأكيد الدفع"
-            )
-
-# ================== PHOTO ==================
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = str(update.message.from_user.id)
-    users = get_user(uid)
-
-    if users[uid]["state"] != "WAIT_IMAGE":
+    if is_spam(user_id):
+        await query.message.reply_text("⏳ برجاء الانتظار قبل المحاولة مرة أخرى.")
         return
 
-    amount = users[uid]["amount"]
-    photo = update.message.photo[-1].file_id
-
-    kb = [
-        [
-            InlineKeyboardButton(
-                "✅ قبول",
-                callback_data=f"deposit_approve_{uid}_{amount}"
-            ),
-            InlineKeyboardButton(
-                "❌ رفض",
-                callback_data=f"deposit_reject_{uid}_{amount}"
-            )
+    if query.data == "buy":
+        keyboard = [
+            [InlineKeyboardButton("100 جميلة", callback_data="gems_100")],
+            [InlineKeyboardButton("250 جميلة", callback_data="gems_250")],
+            [InlineKeyboardButton("500 جميلة", callback_data="gems_500")]
         ]
-    ]
+        await query.message.reply_text(
+            "اختر الباقة 💎",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif query.data.startswith("gems_"):
+        amount = int(query.data.split("_")[1])
+        price = amount * PRICE_PER_GEM
+
+        admin_msg = (
+            f"🛒 طلب شراء جميلات\n\n"
+            f"👤 @{query.from_user.username}\n"
+            f"🆔 ID: {user_id}\n"
+            f"💎 الكمية: {amount}\n"
+            f"💵 السعر: {price}$"
+        )
+        await context.bot.send_message(chat_id=ADMIN_ID, text=admin_msg)
+
+        await query.message.reply_text(
+            f"✅ تم تسجيل طلبك\n\n"
+            f"💎 الكمية: {amount}\n"
+            f"💵 السعر: {price}$\n\n"
+            "💰 قم بالإيداع ثم أرسل صورة التحويل."
+        )
+
+   
+        keyboard = [
+            [InlineKeyboardButton("📱 Vodafone Cash", callback_data="vodafone")],
+            [InlineKeyboardButton("💱 Binance", callback_data="binance")]
+        ]
+        await query.message.reply_text(
+            "اختر طريقة الإيداع 👇",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+   
+        waiting_deposit.add(user_id)
+        await query.message.reply_text(
+            f"📱 Vodafone Cash\n"
+            f"رقم التحويل: {VODAFONE_NUMBER}\n\n"
+            "📸 ابعت صورة التحويل."
+        )
+
+
+
+    elif query.data == "support":
+        await query.message.reply_text(f"🆘 الدعم الفني:\n{SUPPORT_USERNAME}")
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in waiting_deposit:
+        await update.message.reply_text("❌ لا يوجد طلب إيداع مفتوح.")
+        return
+
+    waiting_deposit.remove(user_id)
+
+    caption = (
+        f"💰 إثبات إيداع\n\n"
+        f"👤 @{update.effective_user.username}\n"
+        f"🆔 ID: {user_id}"
+    )
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
-        photo=photo,
-        caption=(
-            f"📥 طلب إيداع جديد\n"
-            f"👤 ID: {uid}\n"
-            f"💰 المبلغ: {amount}$"
-        ),
-        reply_markup=InlineKeyboardMarkup(kb)
+        photo=update.message.photo[-1].file_id,
+        caption=caption
     )
 
-    users[uid]["state"] = None
-    save_users(users)
+    await update.message.reply_text(
+        "✅ تم استلام إثبات الإيداع.\n"
+        "⏱ سيتم التنفيذ قريبًا، شكرًا لثقتك."
+    )
 
-    await update.message.reply_text("⏳ تم إرسال الطلب للإدارة")
 
-# ================== MAIN ==================
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(buttons))
+app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(buttons))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+print("Bot is running...")
+app.run_polling()
 
-    app.run_polling()
 
-if __name__ == "__main__":
-    main()
+
+
+
+
+
 
 
 
