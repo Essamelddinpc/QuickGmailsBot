@@ -1,149 +1,182 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
+    ApplicationBuilder, CommandHandler,
+    CallbackQueryHandler, MessageHandler,
+    ContextTypes, filters
 )
+import json
+import os
 
-# ========= الإعدادات =========
-BOT_TOKEN = "8302444534:AAFkFP1i6K_ftbBxT2fR_Yhmsqrc_QYWvgQ"
+# ========= إعدادات =========
+BOT_TOKEN = "PUT_NEW_BOT_TOKEN_HERE"
 ADMIN_ID = 2017010463
-SUPPORT_USERNAME = "@Quick_Gmails_Support"
 
-VODAFONE_NUMBER = "01030452689"
-BINANCE_ID = "884732274"
+VODAFONE = "01030452689"
+BINANCE = "884732274"
 
-PRICE_PER_GMAIL = 0.30
-# =============================
+PRICE = 0.30
+USERS_FILE = "users.json"
+GMAIL_FILE = "gmails.txt"
+# ===========================
 
-waiting_quantity = set()
-waiting_receipt = {}
+# ---------- ملفات ----------
+if not os.path.exists(USERS_FILE):
+    with open(USERS_FILE, "w") as f:
+        json.dump({}, f)
 
+if not os.path.exists(GMAIL_FILE):
+    open(GMAIL_FILE, "w").close()
 
+def load_users():
+    with open(USERS_FILE) as f:
+        return json.load(f)
+
+def save_users(data):
+    with open(USERS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+def load_gmails():
+    with open(GMAIL_FILE) as f:
+        return [line.strip() for line in f if line.strip()]
+
+def save_gmails(lines):
+    with open(GMAIL_FILE, "w") as f:
+        f.write("\n".join(lines))
+
+# ---------- Start ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🛒 شراء جميلات", callback_data="buy")],
-        [InlineKeyboardButton("🆘 الدعم", url=f"https://t.me/{SUPPORT_USERNAME.replace('@','')}")]
+    uid = str(update.message.from_user.id)
+    users = load_users()
+
+    if uid not in users:
+        users[uid] = {"balance": 0}
+        save_users(users)
+
+    kb = [
+        [InlineKeyboardButton("💼 رصيدي", callback_data="balance")],
+        [InlineKeyboardButton("➕ إيداع", callback_data="deposit")],
+        [InlineKeyboardButton("🛒 شراء جميلات", callback_data="buy")]
     ]
 
     await update.message.reply_text(
         "👋 أهلاً بيك\nاختار من القائمة:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(kb)
     )
 
-
+# ---------- أزرار ----------
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
+    q = update.callback_query
+    await q.answer()
+    uid = str(q.from_user.id)
+    users = load_users()
 
-    if query.data == "buy":
-        waiting_quantity.add(user_id)
-        await query.message.edit_text("💎 اكتب كمية الجيميلات اللي عايزها:")
+    if q.data == "balance":
+        await q.message.edit_text(f"💼 رصيدك الحالي: {users[uid]['balance']}$")
 
-    elif query.data in ["vodafone", "binance"]:
-        waiting_receipt[user_id] = query.data
+    elif q.data == "deposit":
+        kb = [
+            [InlineKeyboardButton("📱 Vodafone Cash", callback_data="dep_voda")],
+            [InlineKeyboardButton("💰 Binance", callback_data="dep_binance")]
+        ]
+        await q.message.edit_text("اختر طريقة الإيداع:", reply_markup=InlineKeyboardMarkup(kb))
 
-        quantity = context.user_data.get("quantity", 0)
-        total_price = context.user_data.get("total_price", 0)
+    elif q.data.startswith("dep_"):
+        method = q.data.split("_")[1]
+        context.user_data["deposit"] = True
 
-        if query.data == "vodafone":
-            text = (
-                "📱 *Vodafone Cash*\n\n"
-                f"💎 الكمية: *{quantity}*\n"
-                f"💵 السعر: *${total_price}*\n\n"
-                f"📞 الرقم: `{VODAFONE_NUMBER}`\n\n"
-                "⚠️ يرجى دفع المبلغ المذكور\n"
-                "📸 ثم ابعت صورة تأكيد الدفع"
-            )
-        else:
-            text = (
-                "💰 *Binance*\n\n"
-                f"💎 الكمية: *{quantity}*\n"
-                f"💵 السعر: *${total_price}*\n\n"
-                f"🆔 Binance ID: `{BINANCE_ID}`\n\n"
-                "⚠️ يرجى دفع المبلغ المذكور\n"
-                "📸 ثم ابعت صورة تأكيد الدفع"
-            )
+        number = VODAFONE if method == "voda" else BINANCE
+        await q.message.edit_text(
+            f"💳 طريقة الدفع\n\n"
+            f"{number}\n\n"
+            "📸 ابعت صورة تأكيد الدفع"
+        )
 
-        await query.message.edit_text(text, parse_mode="Markdown")
+    elif q.data == "buy":
+        context.user_data["buy"] = True
+        await q.message.edit_text("✍️ اكتب كمية الجيميلات:")
 
+    elif q.data.startswith("approve_"):
+        _, uid, amount = q.data.split("_")
+        users = load_users()
+        users[uid]["balance"] += float(amount)
+        save_users(users)
 
+        await q.message.edit_text("✅ تم قبول الإيداع")
+        await context.bot.send_message(uid, f"✅ تم إضافة {amount}$ إلى رصيدك")
+
+    elif q.data.startswith("reject_"):
+        uid = q.data.split("_")[1]
+        await q.message.edit_text("❌ تم رفض الإيداع")
+        await context.bot.send_message(uid, "❌ تم رفض الإيداع")
+
+# ---------- نص ----------
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+    uid = str(update.message.from_user.id)
+    users = load_users()
 
-    if user_id in waiting_quantity:
+    if context.user_data.get("buy"):
         try:
-            quantity = int(update.message.text)
-            if quantity <= 0:
+            qty = int(update.message.text)
+            if qty <= 0:
                 raise ValueError
-        except ValueError:
-            await update.message.reply_text("❌ من فضلك اكتب رقم صحيح")
+        except:
+            await update.message.reply_text("❌ رقم غير صحيح")
             return
 
-        total_price = round(quantity * PRICE_PER_GMAIL, 2)
+        gmails = load_gmails()
+        total = round(qty * PRICE, 2)
 
-        context.user_data["quantity"] = quantity
-        context.user_data["total_price"] = total_price
-        waiting_quantity.remove(user_id)
+        if users[uid]["balance"] < total:
+            await update.message.reply_text("❌ رصيدك غير كافي")
+            context.user_data.clear()
+            return
 
-        keyboard = [
-            [InlineKeyboardButton("📱 Vodafone Cash", callback_data="vodafone")],
-            [InlineKeyboardButton("💰 Binance", callback_data="binance")]
-        ]
+        if len(gmails) < qty:
+            await update.message.reply_text("❌ الكمية غير متوفرة حاليًا")
+            context.user_data.clear()
+            return
+
+        # خصم الرصيد
+        users[uid]["balance"] -= total
+        save_users(users)
+
+        # إرسال الجيميلات
+        send_list = gmails[:qty]
+        save_gmails(gmails[qty:])
 
         await update.message.reply_text(
-            f"✅ *تفاصيل الطلب*\n\n"
-            f"💎 الكمية: *{quantity}*\n"
-            f"💵 السعر الإجمالي: *${total_price}*\n\n"
-            "اختر طريقة الدفع:",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            "✅ تم الشراء بنجاح\n\n"
+            "📧 الجيميلات:\n" + "\n".join(send_list)
         )
-        return
 
-    await update.message.reply_text("❌ استخدم الأزرار فقط")
+        context.user_data.clear()
 
-
+# ---------- صورة ----------
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-
-    if user_id not in waiting_receipt:
-        await update.message.reply_text("⏳ برجاء اتباع الخطوات بالترتيب")
+    if not context.user_data.get("deposit"):
         return
 
-    method = waiting_receipt[user_id]
-    quantity = context.user_data.get("quantity", "غير محدد")
-    total_price = context.user_data.get("total_price", "غير محدد")
-    username = update.message.from_user.username or "بدون يوزر"
+    uid = str(update.message.from_user.id)
+    amount = 5  # مبلغ الإيداع (تقدر تغيره)
 
-    caption = (
-        "📥 *طلب شراء جديد*\n\n"
-        f"👤 المستخدم: @{username}\n"
-        f"🆔 ID: {user_id}\n"
-        f"💎 الكمية: {quantity}\n"
-        f"💵 السعر: ${total_price}\n"
-        f"💳 الطريقة: {method}"
-    )
+    kb = [
+        [
+            InlineKeyboardButton("✅ قبول", callback_data=f"approve_{uid}_{amount}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"reject_{uid}")
+        ]
+    ]
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
         photo=update.message.photo[-1].file_id,
-        caption=caption,
-        parse_mode="Markdown"
+        caption=f"📥 طلب إيداع\n🆔 المستخدم: {uid}\n💵 المبلغ: {amount}$",
+        reply_markup=InlineKeyboardMarkup(kb)
     )
 
-    await update.message.reply_text(
-        "✅ تم استلام صورة التأكيد\nسيتم المراجعة والتواصل معك"
-    )
-
-    waiting_receipt.pop(user_id)
+    await update.message.reply_text("⏳ تم إرسال الإيصال للمراجعة")
     context.user_data.clear()
 
-
+# ---------- تشغيل ----------
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -152,9 +185,8 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    print("🤖 Bot is running...")
+    print("Bot running...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
