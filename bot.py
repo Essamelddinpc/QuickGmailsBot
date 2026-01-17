@@ -37,11 +37,11 @@ def save_users(data):
 
 def load_gmails():
     with open(GMAIL_FILE) as f:
-        return [line.strip() for line in f if line.strip()]
+        return [x.strip() for x in f if x.strip()]
 
-def save_gmails(lines):
+def save_gmails(data):
     with open(GMAIL_FILE, "w") as f:
-        f.write("\n".join(lines))
+        f.write("\n".join(data))
 
 # ---------- Start ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -81,40 +81,61 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.edit_text("اختر طريقة الإيداع:", reply_markup=InlineKeyboardMarkup(kb))
 
     elif q.data.startswith("dep_"):
-        method = q.data.split("_")[1]
-        context.user_data["deposit"] = True
+        context.user_data["deposit_method"] = q.data
+        context.user_data["waiting_amount"] = True
 
-        number = VODAFONE if method == "voda" else BINANCE
-        await q.message.edit_text(
-            f"💳 طريقة الدفع\n\n"
-            f"{number}\n\n"
-            "📸 ابعت صورة تأكيد الدفع"
-        )
+        await q.message.edit_text("✍️ اكتب مبلغ الإيداع بالدولار:")
 
     elif q.data == "buy":
-        context.user_data["buy"] = True
+        context.user_data["buying"] = True
         await q.message.edit_text("✍️ اكتب كمية الجيميلات:")
 
-    elif q.data.startswith("approve_"):
-        _, uid, amount = q.data.split("_")
+    elif q.data.startswith("approve_") or q.data.startswith("reject_"):
+        if q.from_user.id != ADMIN_ID:
+            await q.answer("❌ غير مسموح", show_alert=True)
+            return
+
+        _, action, uid, amount = q.data.split("_")
         users = load_users()
-        users[uid]["balance"] += float(amount)
-        save_users(users)
 
-        await q.message.edit_text("✅ تم قبول الإيداع")
-        await context.bot.send_message(uid, f"✅ تم إضافة {amount}$ إلى رصيدك")
+        if action == "approve":
+            users[uid]["balance"] += float(amount)
+            save_users(users)
 
-    elif q.data.startswith("reject_"):
-        uid = q.data.split("_")[1]
-        await q.message.edit_text("❌ تم رفض الإيداع")
-        await context.bot.send_message(uid, "❌ تم رفض الإيداع")
+            await q.message.edit_text("✅ تم قبول الإيداع")
+            await context.bot.send_message(int(uid), f"✅ تم إضافة {amount}$ إلى رصيدك")
+        else:
+            await q.message.edit_text("❌ تم رفض الإيداع")
+            await context.bot.send_message(int(uid), "❌ تم رفض الإيداع")
 
 # ---------- نص ----------
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.message.from_user.id)
-    users = load_users()
 
-    if context.user_data.get("buy"):
+    if context.user_data.get("waiting_amount"):
+        try:
+            amount = float(update.message.text)
+            if amount <= 0:
+                raise ValueError
+        except:
+            await update.message.reply_text("❌ اكتب مبلغ صحيح")
+            return
+
+        context.user_data["deposit_amount"] = amount
+        context.user_data["waiting_amount"] = False
+        context.user_data["waiting_receipt"] = True
+
+        method = context.user_data["deposit_method"]
+        number = VODAFONE if method == "dep_voda" else BINANCE
+
+        await update.message.reply_text(
+            f"💳 بيانات الدفع\n\n{number}\n\n📸 ابعت صورة تأكيد الدفع"
+        )
+
+        return
+
+    if context.user_data.get("buying"):
+        users = load_users()
         try:
             qty = int(update.message.text)
             if qty <= 0:
@@ -123,8 +144,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ رقم غير صحيح")
             return
 
-        gmails = load_gmails()
         total = round(qty * PRICE, 2)
+        gmails = load_gmails()
 
         if users[uid]["balance"] < total:
             await update.message.reply_text("❌ رصيدك غير كافي")
@@ -132,39 +153,34 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if len(gmails) < qty:
-            await update.message.reply_text("❌ الكمية غير متوفرة حاليًا")
+            await update.message.reply_text("❌ الكمية غير متوفرة")
             context.user_data.clear()
             return
 
-        # خصم الرصيد
         users[uid]["balance"] -= total
         save_users(users)
 
-        # إرسال الجيميلات
-        send_list = gmails[:qty]
+        send = gmails[:qty]
         save_gmails(gmails[qty:])
 
         await update.message.reply_text(
-            "✅ تم الشراء بنجاح\n\n"
-            "📧 الجيميلات:\n" + "\n".join(send_list)
+            "✅ تم الشراء بنجاح\n\n" + "\n".join(send)
         )
 
         context.user_data.clear()
 
 # ---------- صورة ----------
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("deposit"):
+    if not context.user_data.get("waiting_receipt"):
         return
 
     uid = str(update.message.from_user.id)
-    amount = 5  # مبلغ الإيداع (تقدر تغيره)
+    amount = context.user_data["deposit_amount"]
 
-    kb = [
-        [
-            InlineKeyboardButton("✅ قبول", callback_data=f"approve_{uid}_{amount}"),
-            InlineKeyboardButton("❌ رفض", callback_data=f"reject_{uid}")
-        ]
-    ]
+    kb = [[
+        InlineKeyboardButton("✅ قبول", callback_data=f"deposit_approve_{uid}_{amount}"),
+        InlineKeyboardButton("❌ رفض", callback_data=f"deposit_reject_{uid}_{amount}")
+    ]]
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
@@ -190,4 +206,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
